@@ -4,5 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+petgraph = { version = "0.6.5", optional = true }
 rand = "0.8.5"
 rand_distr = "0.4.3"
+weighted_rand = "0.4.2"
+
+[features]
+petgraph = ["dep:petgraph"]

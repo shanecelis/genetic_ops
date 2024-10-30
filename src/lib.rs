@@ -9,6 +9,15 @@ use std::{
     ops::AddAssign
 };
 
+#[cfg(feature = "petgraph")]
+pub mod graph;
+
+pub mod prelude {
+    #[cfg(feature = "petgraph")]
+    pub use graph::*;
+    pub use super::*;
+}
+
 /// A generator
 pub trait Generator<R = StdRng>: Sized
 {
@@ -43,6 +52,7 @@ pub trait Generator<R = StdRng>: Sized
     }
 }
 
+
 // struct FnMarker<G>(PhantomData<G>);
 
 /// A mutator for type `G` in association with type `R`, which is typically a
@@ -51,6 +61,21 @@ pub trait Mutator<R = StdRng, Marker = ()> {
     type Item;
     /// Mutate the `genome` returning the number of mutations that occurred.
     fn mutate(&self, genome: &mut Self::Item, rng: &mut R) -> u32;
+
+
+    // /// Repeat this mutator a set number of times.
+    // fn repeat(self, repeat_count: usize) -> impl Mutator<R, Self::Item, Item = Self::Item>
+    // where
+    //     Self: Sized,
+    // {
+    //     move |genome: &mut Marker, rng: &mut R| {
+    //         let mut count = 0u32;
+    //         for _ in 0..repeat_count {
+    //             count += self.mutate(genome, rng);
+    //         }
+    //         count
+    //     }
+    // }
 }
 
 // impl<F, R, G> Mutator<R, FnMarker<G>> for F
@@ -100,7 +125,7 @@ where
 
 
 /// Add a value drawn from a uniform distribution $U ~ [min, max)$.
-pub fn uniform_mutator<T, R>(min: T, max: T) -> impl Mutator<R, T>
+pub fn uniform_mutator<T, R>(min: T, max: T) -> impl Mutator<R, T, Item = T>
 where
     T: SampleUniform + PartialOrd + Copy + AddAssign<T>,
     R: Rng,
@@ -127,7 +152,7 @@ where
 
 /// Random number generator extensions.
 pub trait RngExt {
-    /// Return a probability $p \in (0, 1)$.
+    /// Return a probability $p \in [0, 1)$.
     fn prob(&mut self) -> f32;
     /// Return true with a probability $p \in [0, 1]$.
     fn with_prob(&mut self, p: f32) -> bool;
@@ -160,5 +185,15 @@ mod test {
         // let x = g(&mut rng);
         let x: u32 = g.gen(&mut rng);
         assert!(x > 0 && x < 100);
+    }
+
+    #[test]
+    fn test_object_safe_mutator() {
+        let mut rng = rand::thread_rng();
+        let mutator = uniform_mutator(0, 10);
+        let mut v = 1;
+        assert_eq!(mutator.mutate(&mut v, &mut rng), 1);
+
+
     }
 }
