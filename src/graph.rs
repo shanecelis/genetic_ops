@@ -131,28 +131,28 @@ where
 /// Add a random node (no edges).
 pub fn add_node<N, E, Ty, Ix, R>(
     generator: impl Generator<R, Item = N>,
-) -> impl Mutator<R, Graph<N, E, Ty, Ix>>
+) -> impl Mutator<R, Item = Graph<N, E, Ty, Ix>>
 where
     Ty: EdgeType,
     Ix: IndexType,
     R: Rng,
 {
-    move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
+    FnMutator::from(move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
         graph.add_node(generator.gen(rng));
         1
-    }
+    })
 }
 
 /// Generate an edge and add to two random nodes.
 pub fn add_edge<N, E, Ty, Ix, R>(
     generator: impl Generator<R, Item = E>,
-) -> impl Mutator<R, Graph<N, E, Ty, Ix>>
+) -> impl Mutator<R, Item = Graph<N, E, Ty, Ix>>
 where
     Ty: EdgeType,
     Ix: IndexType,
     R: Rng,
 {
-    move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
+    FnMutator::from(move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
         let a = graph.node_indices().choose(rng);
         let b = graph.node_indices().choose(rng);
         if let Some((i, j)) = a.zip(b) {
@@ -161,20 +161,20 @@ where
         } else {
             0
         }
-    }
+    })
 }
 
 /// Add a node and connect it to a distinct random node.
 pub fn add_connecting_node<N, E, Ty, Ix, R>(
     node_generator: impl Generator<R, Item = N>,
     edge_generator: impl Generator<R, Item = E>,
-) -> impl Mutator<R, Graph<N, E, Ty, Ix>>
+) -> impl Mutator<R, Item = Graph<N, E, Ty, Ix>>
 where
     Ty: EdgeType,
     Ix: IndexType,
     R: Rng,
 {
-    move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
+    FnMutator::from(move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
         if let Some(i) = graph.node_indices().choose(rng) {
             let j = graph.add_node(node_generator.gen(rng));
             graph.add_edge(i, j, edge_generator.gen(rng));
@@ -183,26 +183,26 @@ where
             let _ = graph.add_node(node_generator.gen(rng));
             1
         }
-    }
+    })
 }
 
 /// Mutate one random node.
 pub fn mutate_one_node<N, E, Ty, Ix, R, M>(
-    mutator: impl Mutator<R, M, Item = N>,
-) -> impl Mutator<R, Graph<N, E, Ty, Ix>>
+    mutator: impl Mutator<R, Item = N>,
+) -> impl Mutator<R, Item = Graph<N, E, Ty, Ix>>
 where
     Ty: EdgeType,
     Ix: IndexType,
     R: Rng,
 {
-    move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
+    FnMutator::from(move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
         if let Some(i) = graph.node_indices().choose(rng) {
             let n = graph.node_weight_mut(i).unwrap();
             mutator.mutate(n, rng)
         } else {
             0
         }
-    }
+    })
 }
 
 /// Mutate all nodes.
@@ -212,31 +212,31 @@ where
 /// ```ignore
 /// mutate_all_nodes(mutator.with_prob(0.1));
 /// ```
-pub fn mutate_all_nodes<N, E, Ty, Ix, R, M>(
-    mutator: impl Mutator<R, M, Item = N>,
-) -> impl Mutator<R, Graph<N, E, Ty, Ix>>
+pub fn mutate_all_nodes<N, E, Ty, Ix, R>(
+    mutator: impl Mutator<R, Item = N>,
+) -> impl Mutator<R, Item = Graph<N, E, Ty, Ix>>
 where
     Ty: EdgeType,
     Ix: IndexType,
     R: Rng,
 {
-    move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
+    FnMutator::from(move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
         let mut count = 0u32;
         for node in graph.node_weights_mut() {
             count += mutator.mutate(node, rng);
         }
         count
-    }
+    })
 }
 
 /// Use one of a collection of weighted mutators when called upon.
 pub struct WeightedMutator<'a, R, G> {
-    mutators: Vec<&'a dyn Mutator<R, G, Item = G>>,
+    mutators: Vec<&'a dyn Mutator<R, Item = G>>,
     table: WalkerTable,
 }
 
 impl<'a, G, R> WeightedMutator<'a, R, G> {
-    pub fn new<T>(mutators: Vec<&'a dyn Mutator<R, G, Item = G>>, weights: &[T]) -> Self
+    pub fn new<T>(mutators: Vec<&'a dyn Mutator<R, Item = G>>, weights: &[T]) -> Self
     where
         WalkerTableBuilder: NewBuilder<T>,
     {
@@ -253,7 +253,7 @@ impl<'a, G, R> WeightedMutator<'a, R, G> {
     }
 }
 
-impl<'a, G, R> Mutator<R,G> for WeightedMutator<'a, R, G>
+impl<'a, G, R> Mutator<R> for WeightedMutator<'a, R, G>
 where
     R: Rng,
 {
@@ -265,20 +265,20 @@ where
 
 /// Mutate one random edge.
 pub fn mutate_one_edge<N, E, Ty, Ix, R, M>(
-    mutator: impl Mutator<R, M, Item = E>,
-) -> impl Mutator<R, Graph<N, E, Ty, Ix>>
+    mutator: impl Mutator<R, Item = E>,
+) -> impl Mutator<R, Item = Graph<N, E, Ty, Ix>>
 where
     Ty: EdgeType,
     Ix: IndexType,
     R: Rng,
 {
-    move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
+    FnMutator::from(move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
         if let Some(i) = graph.edge_indices().choose(rng) {
             mutator.mutate(&mut graph[i], rng)
         } else {
             0
         }
-    }
+    })
 }
 
 /// Mutate all the edges.
@@ -289,20 +289,20 @@ where
 /// mutate_all_edges(mutator.with_prob(0.1));
 /// ```
 pub fn mutate_all_edges<N, E, Ty, Ix, R, M>(
-    mutator: impl Mutator<R, M, Item = E>,
-) -> impl Mutator<R, Graph<N, E, Ty, Ix>>
+    mutator: impl Mutator<R, Item = E>,
+) -> impl Mutator<R, Item = Graph<N, E, Ty, Ix>>
 where
     Ty: EdgeType,
     Ix: IndexType,
     R: Rng,
 {
-    move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
+    FnMutator::from(move |graph: &mut Graph<N, E, Ty, Ix>, rng: &mut R| {
         let mut count = 0u32;
         for edge in graph.edge_weights_mut() {
             count += mutator.mutate(edge, rng);
         }
         count
-    }
+    })
 }
 
 #[cfg(test)]

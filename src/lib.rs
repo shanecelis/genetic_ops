@@ -5,7 +5,7 @@ use rand::{
 };
 use rand_distr::{Distribution, Standard, Normal, StandardNormal};
 use std::{
-    // marker::PhantomData,
+    marker::PhantomData,
     ops::AddAssign
 };
 
@@ -38,17 +38,35 @@ pub trait Generator<R = StdRng>: Sized
     }
 
     /// Turn this generator into a mutator via the given closure.
-    fn into_mutator<F>(self, f: F) -> impl Mutator<R, Self::Item>
-    // fn into_mutator<F,M>(self, f: F) -> impl Mutator<R, M>
+    fn into_mutator<F>(self, f: F) -> impl Mutator<R, Item = Self::Item>
     where
         Self: Sized,
         F: Fn(Self::Item, &mut Self::Item),
     {
-        move |genome: &mut Self::Item, rng: &mut R| {
+        FnMutator::from(move |genome: &mut Self::Item, rng: &mut R| {
             let generated = self.gen(rng);
             f(generated, genome);
             1
-        }
+        })
+    }
+}
+
+pub struct FnMutator<F, G, R>(F, PhantomData<G>, PhantomData<R>);
+
+impl<F, G, R> Mutator<R> for FnMutator<F, G, R>
+where F: Fn(&mut G, &mut R) -> u32 {
+    type Item = G;
+
+    fn mutate(&self, genome: &mut Self::Item, rng: &mut R) -> u32 {
+        (self.0)(genome, rng)
+    }
+
+}
+
+impl<F, G, R> From<F> for FnMutator<F, G, R>
+where F: Fn(&mut G, &mut R) -> u32 {
+    fn from(f: F) -> Self {
+        FnMutator(f, PhantomData, PhantomData)
     }
 }
 
@@ -57,38 +75,56 @@ pub trait Generator<R = StdRng>: Sized
 
 /// A mutator for type `G` in association with type `R`, which is typically a
 /// random number generator.
-pub trait Mutator<R = StdRng, Marker = ()> {
+pub trait Mutator<R = StdRng> {
     type Item;
     /// Mutate the `genome` returning the number of mutations that occurred.
     fn mutate(&self, genome: &mut Self::Item, rng: &mut R) -> u32;
 
 
-    // /// Repeat this mutator a set number of times.
-    // fn repeat(self, repeat_count: usize) -> impl Mutator<R, Self::Item, Item = Self::Item>
-    // where
-    //     Self: Sized,
-    // {
-    //     move |genome: &mut Marker, rng: &mut R| {
-    //         let mut count = 0u32;
-    //         for _ in 0..repeat_count {
-    //             count += self.mutate(genome, rng);
-    //         }
-    //         count
-    //     }
-    // }
+    /// Repeat this mutator a set number of times.
+    fn repeat(self, repeat_count: usize) -> impl Mutator<R, Item = Self::Item>
+    where
+        Self: Sized,
+    {
+        FnMutator::from(move |genome: &mut Self::Item, rng: &mut R| {
+            let mut count = 0u32;
+            for _ in 0..repeat_count {
+                count += self.mutate(genome, rng);
+            }
+            count
+        })
+    }
+
+    /// Return a mutator that only applies itself with probability $p \in [0,
+    /// 1]$.
+    fn with_prob(self, p: f32) -> impl Mutator<R, Item = Self::Item>
+    where
+        Self: Sized,
+        R: Rng,
+    {
+        FnMutator::from(move |genome: &mut Self::Item, rng: &mut R| {
+            if rng.with_prob(p) {
+                self.mutate(genome, rng)
+            } else {
+                0
+            }
+        })
+    }
 }
+
+// Repeater<M, R, Marker>(Mutator<R, Marker>)
 
 // impl<F, R, G> Mutator<R, FnMarker<G>> for F
 /// We use `G` here as a marker attribute. `Self::Item` defines the genome type.
-impl<F, R, G> Mutator<R, G> for F
-where
-    F: Fn(&mut G, &mut R) -> u32,
-{
-    type Item = G;
-    fn mutate(&self, value: &mut Self::Item, rng: &mut R) -> u32 {
-        self(value, rng)
-    }
-}
+// impl<F, R, G> Mutator<R, G> for F
+// where
+//     F: Fn(&mut G, &mut R) -> u32,
+// {
+//     type Item = G;
+//     fn mutate(&self, value: &mut Self::Item, rng: &mut R) -> u32 {
+//         self(value, rng)
+//     }
+// }
 /// Generate a normal distribution with the given $mean$ and $stddev$.
 pub fn normal_generator<T, R>(mean: T, stddev: T) -> Option<impl Generator<R, Item = T>>
 where
@@ -125,21 +161,21 @@ where
 
 
 /// Add a value drawn from a uniform distribution $U ~ [min, max)$.
-pub fn uniform_mutator<T, R>(min: T, max: T) -> impl Mutator<R, T, Item = T>
+pub fn uniform_mutator<T, R>(min: T, max: T) -> impl Mutator<R, Item = T>
 where
     T: SampleUniform + PartialOrd + Copy + AddAssign<T>,
     R: Rng,
 {
-    move |value: &mut T, rng: &mut R| {
+    FnMutator::from(move |value: &mut T, rng: &mut R| {
         *value += rng.gen_range(min..max);
         1
-    }
+    })
 }
 
 
 // Add a value drawn from a normal distribution with the given $mean$ and
 // $stddev$.
-pub fn normal_mutator<T, R>(mean: T, stddev: T) -> Option<impl Mutator<R, T>>
+pub fn normal_mutator<T, R>(mean: T, stddev: T) -> Option<impl Mutator<R, Item = T>>
 where
     T: PartialOrd + Copy + rand_distr::num_traits::Float + AddAssign<T>,
     StandardNormal: Distribution<T>,
