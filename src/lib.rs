@@ -1,9 +1,10 @@
 use rand::{
-    distributions::uniform::SampleUniform,
+    distr::uniform::SampleUniform,
+    distr::Open01,
     rngs::StdRng,
-    Rng,
+    Rng, RngExt,
 };
-use rand_distr::{Distribution, Standard, Normal, StandardNormal};
+use rand_distr::{Distribution, StandardUniform, Normal, StandardNormal};
 use std::{
     marker::PhantomData,
     ops::AddAssign
@@ -25,7 +26,7 @@ pub trait Generator<R = StdRng>: Sized
     // Provided method
     fn gen(&self, rng: &mut R) -> Self::Item;
        // where
-       //  Standard: Distribution<Self::Item>,
+       //  StandardUniform: Distribution<Self::Item>,
        //  R: Rng;// + ?Sized;
 
 
@@ -103,7 +104,7 @@ pub trait Mutator<R = StdRng> {
         R: Rng,
     {
         FnMutator::from(move |genome: &mut Self::Item, rng: &mut R| {
-            if rng.with_prob(p) {
+            if rng.prob() < p {
                 self.mutate(genome, rng)
             } else {
                 0
@@ -141,11 +142,11 @@ where
 pub fn uniform_generator<T, R>(min: T, max: T) -> impl Generator<R, Item = T>
 where
     T: SampleUniform + PartialOrd + Copy,
-    Standard: Distribution<T>,
+    StandardUniform: Distribution<T>,
     R: Rng,
 
 {
-    move |rng: &mut R| rng.gen_range(min..max)
+    move |rng: &mut R| rng.random_range(min..max)
 }
 
 impl<F, R, G> Generator<R> for F
@@ -167,7 +168,7 @@ where
     R: Rng,
 {
     FnMutator::from(move |value: &mut T, rng: &mut R| {
-        *value += rng.gen_range(min..max);
+        *value += rng.random_range(min..max);
         1
     })
 }
@@ -187,16 +188,16 @@ where
 }
 
 /// Random number generator extensions.
-pub trait RngExt {
+pub trait ProbRngExt {
     /// Return a probability $p \in [0, 1)$.
     fn prob(&mut self) -> f32;
     /// Return true with a probability $p \in [0, 1]$.
     fn with_prob(&mut self, p: f32) -> bool;
 }
 
-impl<R: Rng> RngExt for R {
+impl<R: Rng> ProbRngExt for R {
     fn prob(&mut self) -> f32 {
-        self.sample(rand::distributions::Open01)
+        self.sample(Open01)
     }
     fn with_prob(&mut self, p: f32) -> bool {
         p > self.prob()
@@ -208,15 +209,15 @@ mod test {
     use super::*;
     #[test]
     fn test_generator() {
-        let mut rng = rand::thread_rng();
-        let v: Vec<f32> = RngExt::prob.into_iter(&mut rng).take(2).collect();
+        let mut rng = rand::rng();
+        let v: Vec<f32> = ProbRngExt::prob.into_iter(&mut rng).take(2).collect();
         assert!(v[0] > 0.0 && v[0] < 1.0);
         assert!(v[1] > 0.0 && v[1] < 1.0);
     }
 
     #[test]
     fn test_uniform_generator() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let g = uniform_generator(0u32, 100u32);
         // let x = g(&mut rng);
         let x: u32 = g.gen(&mut rng);
@@ -225,7 +226,7 @@ mod test {
 
     #[test]
     fn test_object_safe_mutator() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mutator = uniform_mutator(0, 10);
         let mut v = 1;
         assert_eq!(mutator.mutate(&mut v, &mut rng), 1);
